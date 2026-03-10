@@ -1,16 +1,28 @@
-## Hi there 👋
+# 🛡️ Nathan MICHELLE (Kazibuya)
+> **Ex-Sauveteur en Mer 🌊 | Ex-Mesures Physiques (Orsay) 🔬 | Étudiant à 42 💻**
 
-<!--
-**Kazibuya/Kazibuya** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
+Ancien sauveteur en mer, j'applique aujourd'hui la même rigueur à la survie des infrastructures critiques. Spécialisé en **Cloud Architecture** et **Security Automation**, avec une obsession pour le **Zero Trust**.
 
-Here are some ideas to get you started:
+---
 
-- 🔭 I’m currently working on ...
-- 🌱 I’m currently learning ...
-- 👯 I’m looking to collaborate on ...
-- 🤔 I’m looking for help with ...
-- 💬 Ask me about ...
-- 📫 How to reach me: ...
-- 😄 Pronouns: ...
-- ⚡ Fun fact: ...
--->
+### 🏗️ Current Project: Secure CI/CD Architecture Template
+*Architecture multi-instances sur **AWS** pilotée par **Terraform** & **Ansible**.*
+
+* **Instance 1 (App):** Backend Go + WAF + **HashiCorp Vault** (Agent-side sidecar) + PostgreSQL.
+* **Instance 2 (Monitoring):** Stack Prometheus & Grafana avec injection de secrets via Vault.
+* **Instance 3 (Logging):** Stack **ELK** basée sur des images **Wolfi** (Distroless/Hardened).
+* **Security Core:** Auto-unseal via **AWS KMS**, isolation réseau stricte et rotation dynamique des secrets via Vault.
+
+---
+
+### 🛠️ Tooling & Stack
+* **IaC / Config:** Terraform, Ansible, Terragrunt.
+* **Languages:** **Go** (Mastering for Molecule & Terratest), C.
+* **Cloud & Security:** AWS (KMS, IAM, VPC), HashiCorp Vault, Zero Trust Architecture.
+* **Hardening & Obs:** Wolfi OS, Distroless images, Prometheus, Grafana, ELK.
+
+---
+
+### 📂 Portfolio Migration
+> ⚠️ **Note :** Nouvellement arrivé sur GitHub (anciennement sur la **Vogsphere** interne de 42). 
+> Je migre et documente mes anciens projets (C/Unix/System) progressivement tout en finalisant mes templates d'infrastructure actuels.
