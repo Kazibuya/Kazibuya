@@ -21,3 +21,9 @@ Ancien sauveteur en mer, j'applique aujourd'hui la même rigueur à la survie de
 * **Languages:** **Go** (Mastering for Molecule & Terratest), C.
 * **Cloud & Security:** AWS (KMS, IAM, VPC), HashiCorp Vault, Zero Trust Architecture.
 * **Observability:** Prometheus, Grafana, ELK... **next stop: eBPF 🐝** (pour l'observabilité et la sécurité kernel-level).
+
+---
+
+### 📂 Portfolio Migration
+> ⚠️ **Note :** Nouvellement arrivé sur GitHub (anciennement sur la **Vogsphere** interne de 42). 
+> Je migre et documente mes anciens projets (C/Unix/System) progressivement tout en finalisant mes templates d'infrastructure actuels.
