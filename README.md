@@ -6,23 +6,18 @@ Ancien sauveteur en mer, j'applique aujourd'hui la même rigueur à la survie de
 ---
 
 ### 🏗️ Current Project: Secure CI/CD Architecture Template
-*Architecture multi-instances sur **AWS** pilotée par **Terraform** & **Ansible**.*
+*Architecture multi-instances sur **AWS** pilotée par **Terraform**, **Packer** & **Ansible**.*
 
 * **Instance 1 (App):** Backend Go + WAF + **HashiCorp Vault** (Agent-side sidecar) + PostgreSQL.
 * **Instance 2 (Monitoring):** Stack Prometheus & Grafana avec injection de secrets via Vault.
 * **Instance 3 (Logging):** Stack **ELK** basée sur des images **Wolfi** (Distroless/Hardened).
+* **Hardening:** Utilisation intensive de **Packer** pour baker des AMI immuables.
 * **Security Core:** Auto-unseal via **AWS KMS**, isolation réseau stricte et rotation dynamique des secrets via Vault.
 
 ---
 
 ### 🛠️ Tooling & Stack
-* **IaC / Config:** Terraform, Ansible, Terragrunt.
+* **IaC / Config:** Terraform, **Packer**, Ansible, Terragrunt.
 * **Languages:** **Go** (Mastering for Molecule & Terratest), C.
 * **Cloud & Security:** AWS (KMS, IAM, VPC), HashiCorp Vault, Zero Trust Architecture.
-* **Hardening & Obs:** Wolfi OS, Distroless images, Prometheus, Grafana, ELK.
-
----
-
-### 📂 Portfolio Migration
-> ⚠️ **Note :** Nouvellement arrivé sur GitHub (anciennement sur la **Vogsphere** interne de 42). 
-> Je migre et documente mes anciens projets (C/Unix/System) progressivement tout en finalisant mes templates d'infrastructure actuels.
+* **Observability:** Prometheus, Grafana, ELK... **next stop: eBPF 🐝** (pour l'observabilité et la sécurité kernel-level).
