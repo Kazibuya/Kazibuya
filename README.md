@@ -13,10 +13,16 @@ Ancien sauveteur en mer, j'applique aujourd'hui la même rigueur à la survie de
 - **Cloud & Security :** AWS (KMS, IAM, VPC), HashiCorp Vault, Zero Trust Architecture
 - **Observability :** Prometheus, Grafana, ELK — **next stop : eBPF 🐝** (observabilité et sécurité kernel-level)
 
+### 🏗️ Projet en cours
+
+**Template SANDBOX** — voir ci-dessous pour le détail complet.
+
 ### 📂 Portfolio
 
 > ⚠️ Nouvellement arrivé sur GitHub (anciennement sur la **Vogsphere** interne de 42).
 > Je migre et documente mes anciens projets (C/Unix/System) progressivement tout en finalisant mes templates d'infrastructure actuels.
+>
+> 🔒 Étant en phase d'apprentissage, tout dépôt susceptible de contenir des clés ou secrets est maintenu en **privé** par précaution.
 
 ---
 
