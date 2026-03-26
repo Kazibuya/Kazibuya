@@ -28,7 +28,7 @@ Ancien sauveteur en mer, j'applique aujourd'hui la même rigueur à la survie de
 
 ---
 
-# Template SANDBOX
+# Template SANDBOX (MIGRATION K3s en cours)
 
 > Infrastructure as Code — Déploiement automatisé d'un environnement multi-serveurs sur AWS via Terraform, Packer, Ansible et HashiCorp Vault.
 
