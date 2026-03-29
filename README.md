@@ -122,7 +122,7 @@ L'inventaire Ansible est généré automatiquement par Terraform à partir des I
 
 ### Module Terraform `vault-config` — principe du moindre privilège
 
-![Sceenshot HCL][HCL.png]
+![Sceenshot HCL][./HCL.png]
 
 Chaque service dispose de sa propre policy Vault générée automatiquement par ce module. La policy donne accès uniquement à `secret/data/{service_name}/*` — jamais aux secrets des autres services. Le paramètre `extra_paths` permet d'ajouter des accès supplémentaires de façon explicite (ex: l'app Go accède aussi à `secret/data/db/*` pour les credentials de connexion PostgreSQL). C'est le **principe du moindre privilège** appliqué à Vault — chaque service ne voit que ce dont il a besoin.
 
