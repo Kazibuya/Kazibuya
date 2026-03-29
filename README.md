@@ -56,13 +56,14 @@ L'objectif est de fournir un template réutilisable, sécurisé et reproductible
 | Provisionnement | Ansible | ✅ |
 | Orchestration | K3s + Flannel WireGuard | ✅ |
 | Package manager K8s | Helm | 🔄 en cours |
-| Conteneurisation | Docker | ✅ |
+| Conteneurisation | Docker (PostgreSQL hors K3s) | ✅ |
 | Gestion des secrets | HashiCorp Vault (KV v2, auto-unseal via AWS KMS) | ✅ |
 | Vault distribution | Vault Agent Injector (sidecar K8s) | 🔄 en cours |
 | Vault PKI + mTLS | Vault PKI secrets engine | ⏳ à venir |
-| Logs | Elasticsearch · Kibana · Logstash — ELK 8.x | 🔄 en cours |
-| Monitoring | Grafana · Prometheus · Node Exporter | 🔄 en cours |
-| WAF | Nginx Ingress + ModSecurity | ⏳ à venir |
+| Base de données | PostgreSQL (Docker, secrets via Vault Agent) | ✅ |
+| Logs | Elasticsearch · Kibana · Logstash — ELK 8.x | ⏳ à venir |
+| Monitoring | Grafana · Prometheus · Node Exporter | ⏳ à venir |
+| WAF | Nginx Ingress + ModSecurity (OWASP CRS) | 🔄 en cours |
 | CI/CD | GitHub Actions | ✅ |
 | Sécurité OS | Firewalld, sshd hardening, Ansible Vault (AES256) | ✅ |
 | Réseau inter-nodes | WireGuard natif (Flannel built-in) | ✅ |
@@ -72,6 +73,7 @@ L'objectif est de fournir un template réutilisable, sécurisé et reproductible
 ---
 
 ## Architecture
+
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                      GitHub Actions                     │
@@ -84,8 +86,10 @@ L'objectif est de fournir un template réutilisable, sécurisé et reproductible
               │  ┌─────────────────┐    │
               │  │   EC2 MASTER    │    │  t4g.medium / 20GB
               │  │   K3s server    │    │  port 6443 (API)
-              │  │   Vault         │    │  port 8200
-              │  │   etcd          │    │
+              │  │   Vault (K3s)   │    │  port 30820 (NodePort)
+              │  │   PostgreSQL    │    │  Docker (hors K3s)
+              │  │   App Go (K3s)  │    │  port 30080/30443
+              │  │   Nginx WAF     │    │  Ingress Controller
               │  └────────┬────────┘    │
               │           │ KMS unseal  │
               │  ┌────────▼────────┐    │
@@ -95,25 +99,74 @@ L'objectif est de fournir un template réutilisable, sécurisé et reproductible
               │  ┌─────────────────┐    │
               │  │   EC2 WORKER1   │    │  t4g.medium / 20GB
               │  │   K3s agent     │    │
-              │  │   ELK pods      │    │
+              │  │   ELK pods      │    │  ⏳ à venir
               │  └─────────────────┘    │
               │                         │
               │  ┌─────────────────┐    │
               │  │   EC2 WORKER2   │    │  t4g.small / 8GB
               │  │   K3s agent     │    │
-              │  │   Grafana pods  │    │
+              │  │   Grafana pods  │    │  ⏳ à venir
               │  └─────────────────┘    │
               └─────────────────────────┘
 
   Réseau inter-nodes : chiffré via Flannel + WireGuard natif K3s
   Secrets : distribués via Vault Agent Injector (sidecar tmpfs)
+  WAF : Nginx Ingress Controller + ModSecurity OWASP CRS
 ```
 
 L'inventaire Ansible est généré automatiquement par Terraform à partir des IPs publiques des instances.
 
 ---
 
+## Décisions d'architecture notables
+
+### Module Terraform `vault-config` — principe du moindre privilège
+
+```hcl
+resource "vault_policy" "name" {
+  name = "${var.service_name}-policy"
+  policy = <<EOT
+path "secret/data/${var.service_name}/*" {
+  capabilities = ["read"]
+}
+%{ for path in var.extra_paths ~}
+path "${path}" {
+  capabilities = ["read"]
+}
+%{ endfor ~}
+EOT
+}
+```
+
+Chaque service dispose de sa propre policy Vault générée automatiquement par ce module. La policy donne accès uniquement à `secret/data/{service_name}/*` — jamais aux secrets des autres services. Le paramètre `extra_paths` permet d'ajouter des accès supplémentaires de façon explicite (ex: l'app Go accède aussi à `secret/data/db/*` pour les credentials de connexion PostgreSQL). C'est le **principe du moindre privilège** appliqué à Vault — chaque service ne voit que ce dont il a besoin.
+
+### Firewalld par groupe de nodes — ports ouverts selon le rôle
+
+```yaml
+- name: "opening ports"
+  firewalld:
+    port: "{{ item }}"
+    permanent: yes
+    immediate: yes
+    state: enabled
+  loop: "{{ allowed_ports + extra_ports }}"
+  notify: "Reload Firewall"
+```
+
+Les ports firewalld sont définis par groupe Ansible (`group_vars/MASTER.yml`, `group_vars/WORKERS.yml`) et non dans l'inventory ou dans le rôle. La variable `extra_ports` est surchargée par groupe — chaque node ouvre uniquement les ports correspondant à son rôle dans le cluster. Le rôle `security_os` reste générique et réutilisable : il ne connaît pas les ports K3s ou Vault. C'est la **séparation des responsabilités** — le rôle gère le mécanisme, les `group_vars` gèrent la configuration.
+
+### PostgreSQL hors K3s
+
+PostgreSQL tourne en Docker directement sur le master, hors du cluster K3s. Ce choix est intentionnel — les bases de données sont des **stateful workloads** difficiles à gérer dans Kubernetes. Garder la DB hors K8s garantit l'indépendance : si K3s a un problème, la DB reste accessible. Les credentials sont gérés via Vault Agent sidecar Docker, montés en tmpfs via `*_FILE`.
+
+### Vault dans K3s
+
+Vault tourne dans K3s via le chart officiel HashiCorp. La configuration (KMS unseal, storage) est injectée via `standalone.config` dans `values.yaml.j2` — Ansible template le fichier avec `kms_key_id` avant le `helm install`. Cette approche évite les ConfigMaps manuels et laisse Helm gérer ses propres ressources nativement.
+
+---
+
 ## Structure du projet
+
 ```
 .
 ├── .github/
@@ -124,25 +177,29 @@ L'inventaire Ansible est généré automatiquement par Terraform à partir des I
 │   ├── deploy.yml                  # Playbook principal
 │   ├── packer.yml                  # Playbook pour la construction AMI
 │   ├── group_vars/
-│   │   ├── MASTER.yml              # Ports firewalld master
-│   │   └── WORKERS.yml             # Ports firewalld workers
+│   │   ├── MASTER.yml              # Ports firewalld master (K3s + Vault + WireGuard)
+│   │   └── WORKERS.yml             # Ports firewalld workers (K3s + WireGuard)
 │   └── roles/
 │       ├── security_os/            # Hardening SSH + Firewall
 │       ├── docker_install/         # Installation Docker CE
-│       ├── security_vault/         # Déploiement et init Vault
-│       ├── k3s_master/             # Installation K3s master node
-│       ├── k3s_worker/             # Installation K3s worker nodes
+│       ├── security_vault/         # Déploiement Vault (Helm) + init + feed secrets
+│       ├── postgres/               # PostgreSQL Docker + Vault Agent sidecar
+│       ├── k3s_master/             # K3s master + Helm repos + Ingress nginx
+│       ├── k3s_worker/             # K3s worker nodes
 │       ├── go-server/              # [archivé → Helm chart]
 │       ├── elk-stack/              # [archivé → Helm chart officiel]
 │       └── grafana-stack/          # [archivé → Helm chart officiel]
 ├── helm/
-│   ├── app/                        # Chart custom app Go [à venir]
+│   ├── app/                        # Chart custom app Go 🔄
+│   │   ├── Chart.yaml
+│   │   ├── values.yaml
+│   │   └── templates/
+│   │       ├── deployment.yaml     # Pod + Vault Agent Injector annotations
+│   │       ├── service.yaml        # ClusterIP service
+│   │       └── ingress.yaml        # Nginx + ModSecurity WAF
 │   └── values/
-│       ├── vault.yaml              # Values Vault [à venir]
-│       ├── elasticsearch.yaml      # Values ELK [à venir]
-│       ├── kibana.yaml             # Values Kibana [à venir]
-│       ├── grafana.yaml            # Values Grafana [à venir]
-│       └── prometheus.yaml         # Values Prometheus [à venir]
+│       ├── vault.yaml.j2           # Values Vault (kms_key_id injecté par Ansible)
+│       └── ingress-nginx.yaml      # Values Nginx Ingress + ModSecurity OWASP CRS
 ├── terraform/
 │   ├── infra/
 │   │   ├── main.tf                 # Instances EC2 (master + workers)
@@ -154,13 +211,13 @@ L'inventaire Ansible est généré automatiquement par Terraform à partir des I
 │   │   ├── outputs.tf
 │   │   └── variables.tf
 │   ├── vault/
-│   │   ├── main.tf                 # Vault auth backend + policies
+│   │   ├── main.tf                 # Vault AWS auth backend + policies + roles
 │   │   ├── providers.tf            # Provider Vault + remote_state infra
 │   │   ├── backend.tf              # State S3 (terraform-vault.tfstate)
 │   │   └── variables.tf
 │   └── modules/
 │       ├── compute/                # Module EC2 réutilisable
-│       └── vault-config/           # Module policy + role Vault
+│       └── vault-config/           # Module policy + role Vault (1 par service)
 └── packer/
     └── alma.pkr.hcl                # Build AMI AlmaLinux 9 ARM64
 ```
@@ -168,6 +225,7 @@ L'inventaire Ansible est généré automatiquement par Terraform à partir des I
 ---
 
 ## Flux de déploiement
+
 ```
 1. Packer          →  Build AMI AlmaLinux 9 (hardening + Docker)
 2. Terraform infra →  Provisionnement EC2 (master + workers) / IAM / KMS / SG
@@ -175,19 +233,19 @@ L'inventaire Ansible est généré automatiquement par Terraform à partir des I
 3. Ansible         →  Configuration des nodes :
                        ├── Hardening OS (firewall, sshd, users)
                        ├── Installation Docker
-                       ├── Déploiement Vault + initialisation (master)
-                       │   └── Injection des secrets (app, db, elk, grafana)
-                       ├── Installation K3s master (+ token génération)
-                       └── Installation K3s workers (join cluster)
+                       ├── K3s master (+ Helm repos + Ingress nginx)
+                       ├── Vault (Helm install + init + feed secrets)
+                       ├── PostgreSQL (Docker + Vault Agent sidecar)
+                       └── K3s workers (join cluster)
 4. Terraform vault →  Configuration Vault :
                        ├── AWS auth backend
-                       └── Policies + roles par service
-5. Helm            →  Déploiement des services sur le cluster K3s :
-                       ├── Vault Agent Injector
-                       ├── App Go (chart custom)
-                       ├── ELK (chart officiel Elastic)
-                       ├── Grafana + Prometheus (chart officiel)
-                       └── Nginx Ingress + ModSecurity [à venir]
+                       └── Policies + roles (app, db, elk, grafana)
+5. Helm            →  Déploiement des services dans K3s :
+                       ├── Vault Agent Injector (déjà installé avec Vault)
+                       ├── Nginx Ingress + ModSecurity WAF ✅
+                       ├── App Go (chart custom) 🔄
+                       ├── ELK (chart officiel Elastic) ⏳
+                       └── Grafana + Prometheus ⏳
 ```
 
 ---
@@ -196,28 +254,29 @@ L'inventaire Ansible est généré automatiquement par Terraform à partir des I
 
 ### Gestion des secrets
 
-Les secrets ne transitent jamais en clair dans le code. Le flux est le suivant :
+Les secrets ne transitent jamais en clair dans le code :
 
-- **Vault** est déployé sur le master et s'auto-déverrouille via **AWS KMS** (clé dédiée avec rotation activée).
-- À l'initialisation, le **root token** est chiffré par **Ansible Vault (AES256)** et stocké dans S3 (versionné + chiffré AES256).
-- Les services récupèrent leurs secrets depuis Vault via le **Vault Agent Injector** (sidecar Kubernetes), en s'authentifiant via le **Kubernetes auth method**.
-- Les secrets sont montés en **tmpfs** dans les pods — jamais écrits sur disque.
+- **Vault** tourne dans K3s, auto-unsealed via **AWS KMS**. Root token chiffré AES256 (Ansible Vault) et stocké dans S3 versionné.
+- **Vault Agent Injector** — pour les pods K8s : injecte les secrets via sidecar, montés en tmpfs. Zéro variable d'environnement exposée.
+- **Vault Agent Docker** — pour PostgreSQL hors K3s : même pattern, sidecar Docker, tmpfs, `*_FILE` Postgres.
+- Les secrets sont toujours lus depuis `/vault/secrets/` ou `/secrets/` — jamais depuis des variables d'environnement.
 
 ### Hardening OS
 
 - Accès SSH par clés uniquement, `PermitRootLogin no`
 - Firewall `firewalld` avec ouverture minimale des ports par groupe de nodes
 - Création de comptes utilisateurs nominatifs par membre de l'équipe
+- `sudo secure_path` étendu pour inclure `/usr/local/bin`
 
 ### Réseau
 
 - Chiffrement inter-nodes via **Flannel + WireGuard natif** (K3s built-in)
+- WAF **ModSecurity OWASP CRS** sur l'Ingress Controller nginx
 - Un seul rôle IAM `k3s-role` pour toutes les instances
-- Communications Vault → services via **Kubernetes auth method**
 
 ### IAM
 
-- Principe du moindre privilège : un seul rôle IAM `k3s-role` pour toutes les instances
+- Principe du moindre privilège : un seul rôle IAM `k3s-role`
 - Permissions KMS (encrypt/decrypt) pour Vault auto-unseal
 - Permissions ECR (pull) pour les images applicatives
 
@@ -242,6 +301,7 @@ Les secrets ne transitent jamais en clair dans le code. Le flux est le suivant :
 ### Variables requises
 
 Créer `terraform/infra/terraform.tfvars` :
+
 ```hcl
 aws_region       = "eu-north-1"
 project_name     = "mon-projet"
@@ -250,6 +310,7 @@ email            = "alert@example.com"
 ```
 
 Créer `ansible/secrets.yml` (chiffré avec Ansible Vault) :
+
 ```yaml
 vault_root_token:  "..."
 elastic_pass:      "..."
@@ -264,25 +325,29 @@ app_api_key:       "..."
 ```
 
 ### Construction de l'AMI (une seule fois)
+
 ```bash
 make packer
 ```
 
 ### Déploiement complet
+
 ```bash
 make deploy
 ```
 
 ### Commandes utiles
+
 ```bash
-make plan                         # Affiche le plan Terraform
-make ansible                      # Relance Ansible seul
-make ansible role=k3s_master      # Relance un rôle spécifique
-make kubectl cmd="get nodes"      # Exécute kubectl sur le master
-make kubectl cmd="get pods -A"    # Liste tous les pods
-make output                       # Affiche les IPs et outputs
-make destroy                      # Détruit les instances EC2
-make destroy-full                 # Détruit toute l'infrastructure
+make plan                                    # Affiche le plan Terraform
+make ansible                                 # Relance Ansible seul
+make ansible role=k3s_master                 # Relance un rôle spécifique
+make kubectl cmd="get nodes"                 # Liste les nodes K3s
+make kubectl cmd="get pods -A"               # Liste tous les pods
+make kubectl cmd="logs vault-0 -n vault"     # Logs d'un pod
+make output                                  # Affiche les IPs et outputs
+make destroy                                 # Détruit les instances EC2
+make destroy-full                            # Détruit toute l'infrastructure
 ```
 
 ---
@@ -291,11 +356,9 @@ make destroy-full                 # Détruit toute l'infrastructure
 
 Le pipeline se déclenche automatiquement sur push vers `main` ou `feature/infra`.
 
-Il peut aussi être lancé manuellement avec les actions suivantes :
-
 | Action | Description |
 |---|---|
-| `deploy` | Build image Docker → push ECR → terraform apply → ansible → helm |
+| `deploy` | Build image → push ECR → terraform → ansible → helm |
 | `destroy` | Destruction des instances EC2 uniquement |
 | `destroy-full` | Destruction complète de l'infrastructure |
 
@@ -315,9 +378,11 @@ Il peut aussi être lancé manuellement avec les actions suivantes :
 | Node | Service | Port | Protocole |
 |---|---|---|---|
 | MASTER | K3s API server | 6443 | TCP |
-| MASTER | Vault | 8200 | TCP |
-| MASTER | HTTP | 80 | TCP |
-| MASTER | HTTPS | 443 | TCP |
+| MASTER | Vault (NodePort) | 30820 | TCP |
+| MASTER | Vault UI (NodePort) | 30821 | TCP |
+| MASTER | HTTP (Ingress nginx) | 30080 | TCP |
+| MASTER | HTTPS (Ingress nginx) | 30443 | TCP |
+| MASTER | PostgreSQL | 5432 | TCP |
 | MASTER | etcd | 2379-2380 | TCP |
 | ALL | Kubelet | 10250 | TCP |
 | ALL | Flannel VXLAN | 8472 | UDP |
@@ -329,36 +394,33 @@ Il peut aussi être lancé manuellement avec les actions suivantes :
 
 ## Roadmap
 
-### Helm charts *(en cours)*
+### App Go dans K3s *(en cours)*
 
-Déploiement des services sur le cluster K3s via Helm :
-- **Vault Agent Injector** — distribution des secrets dans les pods
-- **ELK** — charts officiels Elastic
-- **Grafana + Prometheus** — charts officiels
-- **App Go** — chart custom
+Helm chart custom avec Vault Agent Injector pour l'injection des secrets (zéro variable d'environnement), Ingress nginx avec ModSecurity OWASP CRS pour le WAF.
 
-### WAF + Ingress *(à venir)*
+### ELK dans K3s *(à venir)*
 
-Ajout d'un ingress controller **Nginx** avec **ModSecurity** (WAF) pour filtrer le trafic entrant. Terminaison TLS centralisée via **cert-manager** + **Vault PKI**.
+Charts officiels Elastic déployés sur worker1, logs centralisés depuis tous les services.
+
+### Grafana + Prometheus *(à venir)*
+
+Charts officiels sur worker2, dashboards préconfigurés, alerting Prometheus.
 
 ### Vault PKI + mTLS *(à venir)*
 
-Utilisation du **PKI secrets engine** de Vault pour générer et renouveler automatiquement les certificats TLS de chaque service. Vault Agent Injector distribue les certificats dans les pods via des volumes tmpfs. Objectif : **mTLS complet** entre tous les services du cluster.
-
-### eBPF + Cilium *(vision cible)*
-
-Remplacement de Flannel par **Cilium** comme CNI Kubernetes pour bénéficier de :
-- Network policies L3/L4/L7 via eBPF
-- Transparent encryption WireGuard inter-nodes
-- Observabilité kernel-level via **Tetragon**
-- mTLS natif entre services sans modification applicative
+PKI secrets engine pour générer et renouveler automatiquement les certificats TLS. mTLS entre tous les services du cluster via Vault Agent Injector.
 
 ### HA K3s *(à venir)*
 
-Migration vers un cluster **hautement disponible** :
-- 3 masters avec etcd distribué
-- Network Load Balancer AWS devant les masters
-- Migration transparente depuis l'option 1 master actuelle
+Migration vers 3 masters + etcd distribué + NLB AWS. Le code Terraform est structuré pour faciliter cette migration depuis l'architecture 1 master actuelle.
+
+### eBPF + Cilium *(vision cible)*
+
+Remplacement de Flannel par Cilium CNI :
+- Network policies L3/L4/L7 via eBPF
+- Transparent encryption WireGuard inter-nodes
+- Observabilité kernel-level via **Tetragon**
+- mTLS natif sans modification applicative
 
 ### Tests *(à venir)*
 
@@ -367,7 +429,7 @@ Migration vers un cluster **hautement disponible** :
 
 ### devops-kit *(à venir)*
 
-Extraction du template en repo réutilisable — documentation, exemples, variables d'entrée standardisées.
+Extraction en repo réutilisable avec documentation et variables standardisées.
 
 ---
 
