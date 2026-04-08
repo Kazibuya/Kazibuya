@@ -30,11 +30,17 @@ Ancien sauveteur en mer, j'applique aujourd'hui la même rigueur à la survie de
 
 ---
 
-# Template SANDBOX
+# Template SANDBOX (SSH IS A BUG)
 
 > Infrastructure as Code — Déploiement automatisé d'un cluster Kubernetes (K3s) multi-nodes sur AWS via Terraform, Packer, Ansible et HashiCorp Vault.
 
 > ⚠️ **Projet en cours de développement** — migration active de Docker Compose vers K3s. Certaines fonctionnalités sont encore en cours d'implémentation ou de stabilisation.
+
+---
+
+### Cluster actuel
+
+![Cluster actuel — get pods -A](get_pods_A.png)
 
 ---
 
@@ -55,15 +61,15 @@ L'objectif est de fournir un template réutilisable, sécurisé et reproductible
 | Build AMI | Packer + AlmaLinux 9 (aarch64) | ✅ |
 | Provisionnement | Ansible | ✅ |
 | Orchestration | K3s + Flannel WireGuard | ✅ |
-| Package manager K8s | Helm | 🔄 en cours |
+| Package manager K8s | Helm | ✅ |
 | Conteneurisation | Docker (PostgreSQL hors K3s) | ✅ |
 | Gestion des secrets | HashiCorp Vault (KV v2, auto-unseal via AWS KMS) | ✅ |
-| Vault distribution | Vault Agent Injector (sidecar K8s) | 🔄 en cours |
-| Vault PKI + mTLS | Vault PKI secrets engine | ⏳ à venir |
+| Vault distribution | Vault Agent Injector (sidecar K8s) | ✅ |
+| Vault PKI + mTLS | Vault PKI engine (CA trans-ca) + mTLS partout | ✅ |
 | Base de données | PostgreSQL (Docker, secrets via Vault Agent) | ✅ |
 | Logs | Elasticsearch · Kibana · Logstash — ELK 8.x | ⏳ à venir |
-| Monitoring | Grafana · Prometheus · Node Exporter | ⏳ à venir |
-| WAF | Nginx Ingress + ModSecurity (OWASP CRS) | 🔄 en cours |
+| Monitoring | Prometheus · Node Exporter ✅ · Grafana 🔄 | 🔄 en cours |
+| WAF | Nginx Ingress + ModSecurity (OWASP CRS) | ✅ |
 | CI/CD | GitHub Actions | ✅ |
 | Sécurité OS | Firewalld, sshd hardening, Ansible Vault (AES256) | ✅ |
 | Réseau inter-nodes | WireGuard natif (Flannel built-in) | ✅ |
@@ -120,21 +126,202 @@ L'inventaire Ansible est généré automatiquement par Terraform à partir des I
 
 ## Décisions d'architecture notables
 
-### Module Terraform `vault-config` — principe du moindre privilège
+### Module Terraform `vault-config` — moindre privilège côté Vault
 
-![Sceenshot HCL][./hcl.png]
+<details>
+<summary>📄 Voir main.tf du module vault-config</summary>
 
-Chaque service dispose de sa propre policy Vault générée automatiquement par ce module. La policy donne accès uniquement à `secret/data/{service_name}/*` — jamais aux secrets des autres services. Le paramètre `extra_paths` permet d'ajouter des accès supplémentaires de façon explicite (ex: l'app Go accède aussi à `secret/data/db/*` pour les credentials de connexion PostgreSQL). C'est le **principe du moindre privilège** appliqué à Vault — chaque service ne voit que ce dont il a besoin.
+```hcl
+resource "vault_policy" "name" {
+  name = "${var.service_name}-policy"
+  policy = <<EOT
+path "secret/data/${var.service_name}/*" {
+  capabilities = ["read"]
+}
+%{ for path in var.extra_paths ~}
+path "${path}" {
+  capabilities = ["read"]
+}
+%{ endfor ~}
+%{ if var.enable_pki ~}
+path "${var.pki_backend}/issue/${var.pki_role != "" ? var.pki_role : "${var.service_name}-pki"}" {
+  capabilities = ["create", "update"]
+}
+%{ endif ~}
+EOT
+}
+
+resource "vault_aws_auth_backend_role" "name" {
+  count = var.auth_type == "aws" ? 1 : 0
+  backend = var.auth_backend_path
+  role  = "${var.service_name}-role"
+  auth_type  = "iam"
+  bound_iam_principal_arns = ["arn:aws:iam::${var.aws_account_id}:role/${var.iam_role_name}"]
+  token_policies = [vault_policy.name.name]
+  token_ttl = var.token_ttl
+  token_max_ttl = var.token_max_ttl
+}
+
+resource "vault_kubernetes_auth_backend_role" "name" {
+  count = var.auth_type == "kubernetes" ? 1 : 0
+  backend = var.auth_backend_path
+  role_name = "${var.service_name}-role"
+  bound_service_account_names = [var.k8s_service_account]
+  bound_service_account_namespaces = [var.k8s_namespace]
+  token_policies = [vault_policy.name.name]
+  token_ttl = var.token_ttl
+  token_max_ttl = var.token_max_ttl
+}
+
+resource "vault_pki_secret_backend_role" "name" {
+  count            = var.enable_pki ? 1 : 0
+  backend          = var.pki_backend
+  name             = var.pki_role != "" ? var.pki_role : "${var.service_name}-pki"
+  ttl              = var.token_ttl
+  max_ttl          = var.token_max_ttl
+  allow_ip_sans    = true
+  allowed_domains  = var.allowed_domains
+  allow_subdomains = true
+}
+```
+
+</details>
+
+
+
+Chaque service dispose de sa propre policy Vault générée automatiquement par ce module. La policy donne accès uniquement à `secret/data/{service_name}/*` — jamais aux secrets des autres services. Le paramètre `extra_paths` permet d'ajouter des accès supplémentaires de façon explicite (ex: l'app Go accède aussi à `secret/data/db/*`). C'est le **moindre privilège appliqué côté Vault** — chaque service ne voit que ce dont il a besoin. Le moindre privilège côté IAM AWS est en cours de travail (voir section IAM).
 
 ### Firewalld par groupe de nodes — ports ouverts selon le rôle
 
-![Screenshot YAML][YAML.png]
-
 Les ports firewalld sont définis par groupe Ansible (`group_vars/MASTER.yml`, `group_vars/WORKERS.yml`) et non dans l'inventory ou dans le rôle. La variable `extra_ports` est surchargée par groupe — chaque node ouvre uniquement les ports correspondant à son rôle dans le cluster. Le rôle `security_os` reste générique et réutilisable : il ne connaît pas les ports K3s ou Vault. C'est la **séparation des responsabilités** — le rôle gère le mécanisme, les `group_vars` gèrent la configuration.
+
+<details>
+<summary>📄 Voir tasks Ansible firewalld</summary>
+
+```yaml
+- name: "opening ports"
+  firewalld:
+    port: "{{ item }}"
+    permanent: yes
+    immediate: yes
+    state: enabled
+  loop: "{{ allowed_ports + extra_ports }}"
+  notify: "Reload Firewall"
+```
+
+Les interfaces K3s (`cni0`, `flannel-wg`) sont placées en zone `trusted` pour permettre la communication inter-pods et le webhook Vault Agent Injector — sans ça kube-apiserver ne peut pas joindre le webhook sur les workers (502 Bad Gateway) :
+
+```yaml
+- name: "Trust K3s network interfaces"
+  firewalld:
+    zone: trusted
+    interface: "{{ item }}"
+    permanent: yes
+    immediate: yes
+    state: enabled
+  loop:
+    - cni0
+    - flannel-wg
+```
+
+</details>
 
 ### PostgreSQL hors K3s
 
-PostgreSQL tourne en Docker directement sur le master, hors du cluster K3s. Ce choix est intentionnel — les bases de données sont des **stateful workloads** difficiles à gérer dans Kubernetes. Garder la DB hors K8s garantit l'indépendance : si K3s a un problème, la DB reste accessible. Les credentials sont gérés via Vault Agent sidecar Docker, montés en tmpfs via `*_FILE`.
+PostgreSQL tourne en Docker directement sur le master, hors du cluster K3s. Ce choix est intentionnel — les bases de données sont des **stateful workloads** difficiles à gérer dans Kubernetes. Garder la DB hors K8s garantit l'indépendance : si K3s a un problème, la DB reste accessible. Les credentials sont gérés via Vault Agent sidecar Docker, montés en tmpfs via `*_FILE`. mTLS activé via Vault PKI (TLS 1.3).
+
+Points clés du setup Docker :
+- Vault Agent tourne en **UID 70** (même UID que postgres alpine) — peer auth sur socket Unix, zéro credentials dans les logs
+- Volumes `secrets` et `postg_socket` en **tmpfs** (`uid=70,gid=70,mode=700/750`) — secrets jamais sur disque
+- `SKIP_SETCAP=true` + `SKIP_CHOWN=true` — vault-agent sans root, sans capabilities
+- `pid: service:vault-agent` — PostgreSQL partage le namespace PID de vault-agent pour `pg_reload_conf()` via socket
+- PostgreSQL attend les secrets avant de démarrer (`until [ -s /secrets/db_password ]`)
+
+<details>
+<summary>📄 Voir docker-compose.yml.j2</summary>
+
+```yaml
+services:
+  vault-agent:
+    image: hashicorp/vault:{{ vault_version }}
+    user: "70:70"
+    networks:
+      - security_net
+    extra_hosts:
+      - "vault:host-gateway"
+    entrypoint: >
+      sh -c "chmod 700 /secrets && exec vault agent -config=/vault/config/agent.hcl"
+    volumes:
+      - ./agent.hcl:/vault/config/agent.hcl:ro
+      - ./db_user.tpl:/vault/templates/db_user.tpl:ro
+      - ./db_password.tpl:/vault/templates/db_password.tpl:ro
+      - ./db_name.tpl:/vault/templates/db_name.tpl:ro
+      - secrets:/secrets
+      - postg_socket:/var/run/postgresql
+    environment:
+      - SKIP_SETCAP=true
+      - SKIP_CHOWN=true
+    restart: always
+
+  db:
+    image: postgres:{{ db_version }}
+    pid: service:vault-agent
+    ports:
+      - 5432:5432
+    networks:
+      - security_net
+    extra_hosts:
+      - "169.254.169.254:127.0.0.1"
+    environment:
+      - POSTGRES_USER_FILE=/secrets/db_user
+      - POSTGRES_PASSWORD_FILE=/secrets/db_password
+      - POSTGRES_DB_FILE=/secrets/db_name
+      - PGDATA=/var/lib/postgresql/data
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - secrets:/secrets:ro
+      - postg_socket:/var/run/postgresql
+      - ./postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    command: >
+      sh -c "
+      echo 'DB Waiting for Vault secrets...';
+      until [ -s /secrets/db_password ]; do
+        sleep 2;
+      done;
+      echo 'Secrets found! Launching PostgreSQL...';
+      exec docker-entrypoint.sh postgres -c config_file=/etc/postgresql/postgresql.conf
+      "
+    restart: always
+    depends_on:
+      - vault-agent
+
+volumes:
+  postgres_data:
+    driver: local
+  secrets:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "size=10m,uid=70,gid=70,mode=700"
+  postg_socket:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: "size=1m,uid=70,gid=70,mode=750"
+
+networks:
+  security_net:
+    driver: bridge
+```
+
+</details>
+
+> TODO: IPC_LOCK + ulimits (bavure RAM sur swap)
+
+> TODO: Dockerfile propre pour vault-agent — actuellement vault-agent n'est pas PID 1 (entrypoint `sh -c "chmod 700 /secrets && exec vault agent"`), ce qui peut poser des problèmes de signal forwarding (SIGTERM non propagé correctement). À remplacer par un Dockerfile custom qui gère proprement les permissions et lance vault-agent directement comme PID 1.
 
 ### Vault dans K3s
 
@@ -155,7 +342,8 @@ Vault tourne dans K3s via le chart officiel HashiCorp. La configuration (KMS uns
 │   ├── packer.yml                  # Playbook pour la construction AMI
 │   ├── group_vars/
 │   │   ├── MASTER.yml              # Ports firewalld master (K3s + Vault + WireGuard)
-│   │   └── WORKERS.yml             # Ports firewalld workers (K3s + WireGuard)
+│   │   ├── WORKERS.yml             # Ports firewalld workers (K3s + WireGuard)
+│   │   └── GRAFANA.yml             # Ports firewalld worker2 (Grafana + Prometheus + node-exporter)
 │   └── roles/
 │       ├── security_os/            # Hardening SSH + Firewall
 │       ├── docker_install/         # Installation Docker CE
@@ -176,7 +364,10 @@ Vault tourne dans K3s via le chart officiel HashiCorp. La configuration (KMS uns
 │   │       └── ingress.yaml        # Nginx + ModSecurity WAF
 │   └── values/
 │       ├── vault.yaml.j2           # Values Vault (kms_key_id injecté par Ansible)
-│       └── ingress-nginx.yaml      # Values Nginx Ingress + ModSecurity OWASP CRS
+│       ├── ingress-nginx.yaml      # Values Nginx Ingress + ModSecurity OWASP CRS
+│       ├── node-exporter.yaml      # DaemonSet node-exporter (PKI + HTTPS)
+│       ├── node-exporter-web-config.yaml  # Config TLS node-exporter
+│       └── prometheus.yaml         # kube-prometheus-stack (PKI + scrape mTLS)
 ├── terraform/
 │   ├── infra/
 │   │   ├── main.tf                 # Instances EC2 (master + workers)
@@ -220,9 +411,11 @@ Vault tourne dans K3s via le chart officiel HashiCorp. La configuration (KMS uns
 5. Helm            →  Déploiement des services dans K3s :
                        ├── Vault Agent Injector (déjà installé avec Vault)
                        ├── Nginx Ingress + ModSecurity WAF ✅
-                       ├── App Go (chart custom) 🔄
+                       ├── App Go (chart custom) ✅
                        ├── ELK (chart officiel Elastic) ⏳
-                       └── Grafana + Prometheus ⏳
+                       ├── Prometheus (kube-prometheus-stack) ✅
+                       ├── Node Exporter DaemonSet (3 nodes, mTLS) ✅
+                       └── Grafana 🔄
 ```
 
 ---
@@ -248,14 +441,17 @@ Les secrets ne transitent jamais en clair dans le code :
 ### Réseau
 
 - Chiffrement inter-nodes via **Flannel + WireGuard natif** (K3s built-in)
+- **mTLS** entre tous les services : nginx → app Go → PostgreSQL (Vault PKI, CA trans-ca)
+- **Vault PKI** : renouvellement automatique des certs (TTL 24h, rotation sidecar)
 - WAF **ModSecurity OWASP CRS** sur l'Ingress Controller nginx
-- Un seul rôle IAM `k3s-role` pour toutes les instances
+- Rôle IAM unique `k3s-role` pour toutes les instances *(limitation — voir section IAM)*
 
 ### IAM
 
-- Principe du moindre privilège : un seul rôle IAM `k3s-role`
-- Permissions KMS (encrypt/decrypt) pour Vault auto-unseal
-- Permissions ECR (pull) pour les images applicatives
+- Rôle IAM unique `k3s-role` partagé entre toutes les instances — **limitation connue** : ce n'est pas du moindre privilège. Vault, PostgreSQL et l'app Go partagent le même rôle IAM, ce qui signifie que chaque instance a les mêmes droits AWS (KMS + ECR + Vault AWS auth).
+- **Roadmap** : migration vers des rôles IAM séparés par service (un rôle `vault-role`, un rôle `db-role`, un rôle `app-role`) dès que l'app Go sera migrée sur un worker3 dédié — ce qui permettra aussi de restreindre le rôle DB/Vault au master uniquement.
+- Permissions KMS (encrypt/decrypt) — Vault auto-unseal
+- Permissions ECR (pull) — images applicatives
 
 ---
 
@@ -366,26 +562,33 @@ Le pipeline se déclenche automatiquement sur push vers `main` ou `feature/infra
 | ALL | WireGuard | 51820 | UDP |
 | ALL | NodePort range | 30000-32767 | TCP |
 | ALL | Node Exporter | 9100 | TCP |
+| WORKER2 | Prometheus | 9090 | TCP |
+| WORKER2 | Grafana | 3000 | TCP |
+| WORKER2 | Prometheus | 9090 | TCP |
 
 ---
 
 ## Roadmap
 
-### App Go dans K3s *(en cours)*
+### App Go dans K3s ✅
 
-Helm chart custom avec Vault Agent Injector pour l'injection des secrets (zéro variable d'environnement), Ingress nginx avec ModSecurity OWASP CRS pour le WAF.
+Chart Helm custom déployé dans namespace app avec SA gartic-app dédié. Vault Agent Injector injecte secrets KV + cert PKI bundle. mTLS nginx → app + app → postgres opérationnel.
+
+**Roadmap app :**
+- Migration vers un **worker3 dédié** — objectif : isoler l'app du master pour que Vault et PostgreSQL conservent le rôle IAM AWS auth seuls. L'app sur worker3 utilisera uniquement K8s auth, sans droits IAM AWS.
+- `shareProcessNamespace: true` utilisé pour nginx (SIGHUP cert renewal via vault-agent) — à terme remplacé par **Cilium** qui gère le mTLS de façon transparente sans partage de namespace PID.
 
 ### ELK dans K3s *(à venir)*
 
 Charts officiels Elastic déployés sur worker1, logs centralisés depuis tous les services.
 
-### Grafana + Prometheus *(à venir)*
+### Grafana + Prometheus 🔄
 
-Charts officiels sur worker2, dashboards préconfigurés, alerting Prometheus.
+Prometheus ✅ opérationnel sur worker2 (scrape node-exporter en mTLS). Grafana en cours de déploiement.
 
-### Vault PKI + mTLS *(à venir)*
+### Vault PKI + mTLS ✅
 
-PKI secrets engine pour générer et renouveler automatiquement les certificats TLS. mTLS entre tous les services du cluster via Vault Agent Injector.
+PKI engine opérationnel (CA trans-ca). mTLS complet : nginx → app Go → PostgreSQL. PKI cert injectés via Vault Agent Injector sur tous les services (app, nginx, postgres, node-exporter, prometheus).
 
 ### HA K3s *(à venir)*
 
