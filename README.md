@@ -321,8 +321,6 @@ networks:
 
 > TODO: IPC_LOCK + ulimits (bavure RAM sur swap)
 
-> TODO: Dockerfile propre pour vault-agent — actuellement vault-agent n'est pas PID 1 (entrypoint `sh -c "chmod 700 /secrets && exec vault agent"`), ce qui peut poser des problèmes de signal forwarding (SIGTERM non propagé correctement). À remplacer par un Dockerfile custom qui gère proprement les permissions et lance vault-agent directement comme PID 1.
-
 ### Vault dans K3s
 
 Vault tourne dans K3s via le chart officiel HashiCorp. La configuration (KMS unseal, storage) est injectée via `standalone.config` dans `values.yaml.j2` — Ansible template le fichier avec `kms_key_id` avant le `helm install`. Cette approche évite les ConfigMaps manuels et laisse Helm gérer ses propres ressources nativement.
