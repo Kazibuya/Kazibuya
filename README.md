@@ -19,19 +19,29 @@ Je passe la majorité de mon temps à monter des **labs pour casser et reconstru
 
 **Cloud & Infra**
 
-[![My Skills](https://skillicons.dev/icons?i=aws,terraform,kubernetes,helm,docker&theme=dark)](https://skillicons.dev)
+![AWS](https://img.shields.io/badge/AWS-232F3E?style=flat-square&logo=amazonaws&logoColor=white)
+![Terraform](https://img.shields.io/badge/Terraform-623CE4?style=flat-square&logo=terraform&logoColor=white)
+![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?style=flat-square&logo=kubernetes&logoColor=white)
+![Helm](https://img.shields.io/badge/Helm-0F1689?style=flat-square&logo=helm&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white)
 
 **Langages**
 
-[![My Skills](https://skillicons.dev/icons?i=c,cpp,go,python,bash&theme=dark)](https://skillicons.dev)
+![C](https://img.shields.io/badge/C-A8B9CC?style=flat-square&logo=c&logoColor=black)
+![C++](https://img.shields.io/badge/C++-00599C?style=flat-square&logo=cplusplus&logoColor=white)
+![Go](https://img.shields.io/badge/Go-00ADD8?style=flat-square&logo=go&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white)
+![Bash](https://img.shields.io/badge/Bash-4EAA25?style=flat-square&logo=gnubash&logoColor=white)
 ![Makefile](https://img.shields.io/badge/Makefile-A9A9A9?style=flat-square&logo=gnu&logoColor=white)
 ![Taskfile](https://img.shields.io/badge/Taskfile-29BEB0?style=flat-square&logo=task&logoColor=white)
 
 **Automatisation & CI**
 
-[![My Skills](https://skillicons.dev/icons?i=githubactions,ansible&theme=dark)](https://skillicons.dev)
-![Apko](https://img.shields.io/badge/Apko-1A6CE8?style=flat-square&logo=wolfi&logoColor=white)
-![Melange](https://img.shields.io/badge/Melange-1A6CE8?style=flat-square&logo=wolfi&logoColor=white)
+![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white)
+![Ansible](https://img.shields.io/badge/Ansible-EE0000?style=flat-square&logo=ansible&logoColor=white)
+![Packer](https://img.shields.io/badge/Packer-02A8EF?style=flat-square&logo=packer&logoColor=white)
+![Apko](https://img.shields.io/badge/Apko-1A6CE8?style=flat-square&logo=chainguard&logoColor=white)
+![Melange](https://img.shields.io/badge/Melange-1A6CE8?style=flat-square&logo=chainguard&logoColor=white)
 
 **Sécurité & Qualité**
 
@@ -50,8 +60,10 @@ Je passe la majorité de mon temps à monter des **labs pour casser et reconstru
 
 **Observabilité**
 
-[![My Skills](https://skillicons.dev/icons?i=prometheus,grafana&theme=dark)](https://skillicons.dev)
+![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=flat-square&logo=prometheus&logoColor=white)
+![Grafana](https://img.shields.io/badge/Grafana-F46800?style=flat-square&logo=grafana&logoColor=white)
 ![Elasticsearch](https://img.shields.io/badge/Elasticsearch-005571?style=flat-square&logo=elasticsearch&logoColor=white)
+![Kibana](https://img.shields.io/badge/Kibana-005571?style=flat-square&logo=kibana&logoColor=white)
 ![Filebeat](https://img.shields.io/badge/Filebeat-005571?style=flat-square&logo=elastic&logoColor=white)
 
 ---
