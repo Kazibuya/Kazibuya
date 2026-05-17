@@ -54,6 +54,7 @@ Je passe la majorité de mon temps à monter des **labs pour casser et reconstru
 ![KICS](https://img.shields.io/badge/KICS-FF6D00?style=flat-square&logo=checkmarx&logoColor=white)
 ![SonarQube](https://img.shields.io/badge/SonarQube-4E9BCD?style=flat-square&logo=sonarqube&logoColor=white)
 ![Trivy](https://img.shields.io/badge/Trivy-1904DA?style=flat-square&logo=aquasecurity&logoColor=white)
+![Inspektor Gadget](https://img.shields.io/badge/Inspektor_Gadget-6933FF?style=flat-square&logo=linux&logoColor=white)
 
 **Tests**
 
