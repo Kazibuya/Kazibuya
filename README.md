@@ -7,7 +7,7 @@
 
 ## Qu'est-ce que j'aime faire ?
 
-La **supply chain security** et le **Zero Trust**, pas en cochant des cases, en allant au bout.
+La **supply chain security** et le **Zero Trust** — pas en cochant des cases, en allant au bout.
 
 ## Donc :
 
@@ -59,6 +59,7 @@ Je passe la majorité de mon temps à monter des **labs pour casser et reconstru
 ## Formation
 
 - **2023 – 2028** · École 42 — Titre RNCP Niv. 7 (Expert Architecture Informatique)
+- **2020 – 2022** · DUT Mesures Physiques — Université Paris-Saclay (Orsay)
 
 ---
 
