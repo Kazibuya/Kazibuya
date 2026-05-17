@@ -24,6 +24,7 @@ Je passe la majorité de mon temps à monter des **labs pour casser et reconstru
 ![Kubernetes](https://img.shields.io/badge/Kubernetes-326CE5?style=flat-square&logo=kubernetes&logoColor=white)
 ![Helm](https://img.shields.io/badge/Helm-0F1689?style=flat-square&logo=helm&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white)
+![Docker Compose](https://img.shields.io/badge/Docker_Compose-2496ED?style=flat-square&logo=docker&logoColor=white)
 
 **Langages**
 
@@ -52,6 +53,7 @@ Je passe la majorité de mon temps à monter des **labs pour casser et reconstru
 ![Gosec](https://img.shields.io/badge/Gosec-00ADD8?style=flat-square&logo=go&logoColor=white)
 ![KICS](https://img.shields.io/badge/KICS-FF6D00?style=flat-square&logo=checkmarx&logoColor=white)
 ![SonarQube](https://img.shields.io/badge/SonarQube-4E9BCD?style=flat-square&logo=sonarqube&logoColor=white)
+![Trivy](https://img.shields.io/badge/Trivy-1904DA?style=flat-square&logo=aquasecurity&logoColor=white)
 
 **Tests**
 
