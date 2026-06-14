@@ -33,11 +33,11 @@ Je passe la majorité de mon temps à monter des **labs pour casser et reconstru
 ![Go](https://img.shields.io/badge/Go-00ADD8?style=flat-square&logo=go&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white)
 ![Bash](https://img.shields.io/badge/Bash-4EAA25?style=flat-square&logo=gnubash&logoColor=white)
-![Makefile](https://img.shields.io/badge/Makefile-A9A9A9?style=flat-square&logo=gnu&logoColor=white)
-![Taskfile](https://img.shields.io/badge/Taskfile-29BEB0?style=flat-square&logo=task&logoColor=white)
 
 **Automatisation & CI**
 
+![Makefile](https://img.shields.io/badge/Makefile-A9A9A9?style=flat-square&logo=gnu&logoColor=white)
+![Taskfile](https://img.shields.io/badge/Taskfile-29BEB0?style=flat-square&logo=task&logoColor=white)
 ![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-2088FF?style=flat-square&logo=githubactions&logoColor=white)
 ![Ansible](https://img.shields.io/badge/Ansible-EE0000?style=flat-square&logo=ansible&logoColor=white)
 ![Packer](https://img.shields.io/badge/Packer-02A8EF?style=flat-square&logo=packer&logoColor=white)
